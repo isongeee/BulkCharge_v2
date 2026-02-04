@@ -140,6 +140,10 @@ def resource_path(*parts):
 
 HERE = os.path.abspath(os.path.dirname(__file__))
 UI_DIR = resource_path("ui")   # <- instead of os.path.join(HERE, "ui")
+if not os.path.isdir(UI_DIR):
+    _alt_ui = os.path.join(os.getcwd(), "ui")
+    if os.path.isdir(_alt_ui):
+        UI_DIR = _alt_ui
 
 def _cache_get(key: str, ttl: int, refresh: bool):
     if refresh or ttl <= 0:
@@ -1176,4 +1180,7 @@ def export_csv_by_ticket(ticket: str):
 
 # Build app with router and static mount (static last)
 app.include_router(api, prefix="/api")
-app.mount("/", StaticFiles(directory=UI_DIR, html=True), name="ui")
+if os.path.isdir(UI_DIR):
+    app.mount("/", StaticFiles(directory=UI_DIR, html=True), name="ui")
+else:
+    print(f"UI dir missing; skipping static mount: {UI_DIR}")
