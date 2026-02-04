@@ -1,0 +1,17 @@
+.env
+.env.local
+.venv/
+__pycache__/
+*.pyc
+build/
+dist/
+dist_v2/
+Late_Fee_Live/
+*.zip
+*.spec
+*.log
+*.exe
+*.exe.WebView2/
+
+.vercel
+.env*.local
