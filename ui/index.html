@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Bulk Charges Builder</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Staatliches&display=swap");
+
+      :root {
+        --bg: #0c1118;
+        --bg-2: #121a24;
+        --panel: #f4f5f0;
+        --panel-2: #eef1f4;
+        --ink: #101318;
+        --muted: #5e6876;
+        --line: #cfd6de;
+        --accent: #ffb100;
+        --accent-2: #1f6feb;
+        --accent-ink: #1a1200;
+        --shadow: 0 16px 40px rgba(5, 8, 12, 0.35);
+        --radius: 16px;
+        --radius-sm: 10px;
+        --font-body: "IBM Plex Sans", "Segoe UI", Tahoma, sans-serif;
+        --font-display: "Staatliches", "IBM Plex Sans", "Segoe UI", Tahoma,
+          sans-serif;
+        --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas,
+          "Liberation Mono", Menlo, monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: #fff;
+        font-family: var(--font-body);
+        background: radial-gradient(
+            900px 420px at 10% -10%,
+            rgba(255, 177, 0, 0.25),
+            transparent 60%
+          ),
+          radial-gradient(
+            800px 480px at 90% 10%,
+            rgba(31, 111, 235, 0.18),
+            transparent 55%
+          ),
+          linear-gradient(180deg, var(--bg), var(--bg-2));
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background: linear-gradient(
+            transparent 96%,
+            rgba(255, 255, 255, 0.05) 96%
+          ),
+          linear-gradient(
+            90deg,
+            transparent 96%,
+            rgba(255, 255, 255, 0.05) 96%
+          );
+        background-size: 36px 36px;
+        opacity: 0.35;
+        mix-blend-mode: soft-light;
+      }
+
+      .wrap {
+        width: 100%;
+        max-width: none;
+        margin: 24px 0;
+        padding: 0 24px 28px;
+      }
+
+      .header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 12px 18px;
+        margin-bottom: 20px;
+      }
+      .title-block {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      h1 {
+        margin: 0;
+        font-family: var(--font-display);
+        font-size: 34px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: var(--accent);
+        color: var(--accent-ink);
+        font-weight: 700;
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        box-shadow: 0 8px 20px rgba(255, 177, 0, 0.3);
+      }
+      .meta {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: rgba(255, 255, 255, 0.65);
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .right {
+        margin-left: auto;
+      }
+
+      .card {
+        background: var(--panel);
+        color: var(--ink);
+        border-radius: var(--radius);
+        border: 1px solid rgba(16, 19, 24, 0.12);
+        box-shadow: var(--shadow);
+        padding: 20px;
+        position: relative;
+        overflow: hidden;
+      }
+      .card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-top: 4px solid rgba(255, 177, 0, 0.7);
+        opacity: 0.8;
+        pointer-events: none;
+      }
+
+      .toolbar {
+        display: grid;
+        grid-template-columns: minmax(220px, 280px) 1fr;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+      .toolbar-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--line);
+        background: var(--panel-2);
+      }
+      .toolbar-filters {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+      .field-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .toolbar-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--muted);
+        font-weight: 600;
+      }
+
+      .control {
+        width: 100%;
+        min-height: 36px;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        color: var(--ink);
+        font-family: var(--font-body);
+      }
+      .control:focus-visible {
+        outline: 3px solid rgba(31, 111, 235, 0.35);
+        outline-offset: 1px;
+        border-color: #1f6feb;
+        box-shadow: 0 0 0 2px rgba(31, 111, 235, 0.15);
+      }
+      .control::placeholder {
+        color: #8a94a2;
+      }
+      .field-row .control {
+        flex: 1 1 140px;
+      }
+      .control-narrow {
+        max-width: 140px;
+      }
+
+      button,
+      .btn {
+        appearance: none;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        padding: 10px 14px;
+        cursor: pointer;
+        font-family: var(--font-body);
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        transition: transform 120ms ease, box-shadow 120ms ease,
+          background 120ms ease, border-color 120ms ease;
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: var(--accent-ink);
+        border-color: #e0a100;
+        box-shadow: 0 6px 18px rgba(255, 177, 0, 0.3);
+      }
+      .btn-secondary {
+        background: #0f1722;
+        color: #eef2f6;
+        border-color: #283341;
+      }
+      .btn-ghost {
+        background: var(--panel-2);
+        color: var(--ink);
+        border-color: var(--line);
+      }
+      .btn:focus-visible {
+        outline: 3px solid rgba(31, 111, 235, 0.55);
+        outline-offset: 2px;
+      }
+      .btn:hover {
+        transform: translateY(-1px);
+      }
+      .btn-primary:hover {
+        box-shadow: 0 10px 24px rgba(255, 177, 0, 0.35);
+      }
+      .btn-secondary:hover {
+        background: #172131;
+      }
+      .btn-ghost:hover {
+        background: #e6ebf1;
+      }
+
+      .table-shell {
+        overflow: auto;
+        max-height: 70vh;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 980px;
+      }
+      th,
+      td {
+        border-bottom: 1px solid var(--line);
+        padding: 10px 12px;
+        text-align: left;
+        font-size: 13px;
+        vertical-align: top;
+      }
+      thead th {
+        position: sticky;
+        top: 0;
+        background: #e9edf2;
+        z-index: 1;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 11px;
+        color: #2b3442;
+      }
+      tbody tr:nth-child(odd) {
+        background: #fafbfc;
+      }
+      tbody tr:hover {
+        background: rgba(255, 177, 0, 0.12);
+      }
+      #dataTable td:nth-child(7),
+      #dataTable td:nth-child(8),
+      #dataTable td:nth-child(9),
+      #dataTable td:nth-child(10),
+      #dataTable td:nth-child(11),
+      #dataTable td:nth-child(12) {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        font-family: var(--font-mono);
+      }
+      #dataTable th:nth-child(7),
+      #dataTable th:nth-child(8),
+      #dataTable th:nth-child(9),
+      #dataTable th:nth-child(10),
+      #dataTable th:nth-child(11),
+      #dataTable th:nth-child(12) {
+        text-align: right;
+      }
+
+      .note {
+        margin-top: 16px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px dashed rgba(255, 177, 0, 0.6);
+        background: #fff7df;
+        color: #2b2f36;
+        font-size: 13px;
+      }
+      .note ul {
+        margin: 8px 0 0 18px;
+        padding: 0;
+      }
+      .note li {
+        margin-bottom: 4px;
+      }
+
+      /* sortable headers */
+      th.sortable {
+        cursor: pointer;
+        user-select: none;
+      }
+      th .sort-ind {
+        font-size: 11px;
+        opacity: 0.7;
+        margin-left: 6px;
+      }
+      #dataTable th.col-v2,
+      #dataTable td.col-v2 {
+        display: none;
+      }
+      #dataTable.show-v2 th.col-v2,
+      #dataTable.show-v2 td.col-v2 {
+        display: table-cell;
+      }
+
+      @media (max-width: 980px) {
+        .toolbar {
+          grid-template-columns: 1fr;
+        }
+        .toolbar-actions {
+          flex-direction: row;
+          flex-wrap: wrap;
+        }
+      }
+      @media (max-width: 700px) {
+        .wrap {
+          margin: 16px 0;
+          padding: 0 16px 20px;
+        }
+        h1 {
+          font-size: 28px;
+        }
+        .badge {
+          font-size: 11px;
+        }
+        table {
+          min-width: 860px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="header">
+        <div class="title-block">
+          <h1>Bulk Charges Builder</h1>
+          <span class="badge"
+          >GL in table: 4030-203 • Source filter: 4005-102</span
+          >
+        </div>
+        <div class="meta right">
+          Data source: Aged Receivables + Tenant Directory (v2)
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="toolbar">
+          <div class="toolbar-actions">
+            <button id="loadBtn" class="btn btn-ghost">Load Data</button>
+            <button id="exportCsvBtn" class="btn btn-secondary">
+              Export CSV
+            </button>
+            <button id="bulkBtn" class="btn btn-primary">
+              Create Bulk Charges (Selected)
+            </button>
+          </div>
+          <div class="toolbar-filters">
+
+          <div class="field">
+            <label class="toolbar-label" for="propFilter">Property</label>
+            <select id="propFilter" class="control">
+              <option value="">All Properties</option>
+            </select>
+          </div>
+          <!-- Charge Date filter controls -->
+          <div class="field">
+            <span class="toolbar-label">Date Filter</span>
+            <div class="field-row">
+              <select id="monthFilter" class="control">
+                <!-- populated in JS -->
+              </select>
+              <select id="yearFilter" class="control">
+                <!-- populated in JS -->
+              </select>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="toolbar-label" for="descDate">
+              Posting date for description
+            </label>
+            <div class="field-row">
+              <input type="date" id="descDate" class="control" />
+              <button
+                id="applyDescBtn"
+                class="btn btn-ghost"
+                title="Set Description for filtered rows"
+              >
+                Apply description
+              </button>
+            </div>
+          </div>
+
+          <div class="field">
+            <span class="toolbar-label">View Options</span>
+            <button
+              id="toggleV2Btn"
+              class="btn btn-secondary"
+              title="View-only; excluded from Export CSV"
+            >
+            Show AR Columns (0–30 & Rent)
+            </button>
+          </div>
+
+          <div class="field">
+            <label class="toolbar-label" for="zero30Min">
+            Min 0–30 Amount:
+          </label>
+            <input
+              type="number"
+              id="zero30Min"
+              min="0"
+              step="any"
+              placeholder="e.g., 500"
+              class="control control-narrow"
+            />
+          </div>
+
+          </div>
+        </div>
+        <div class="table-shell">
+          <table id="dataTable">
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="selectAll" /></th>
+                <th>Property Name</th>
+                <th>Unit Name</th>
+                <th>Occupancy UID</th>
+                <th>Tenant Name</th>
+                <th>Occupancy ID</th>
+                <th>Amount</th>
+                <th class="col-v2">0–30</th>
+                <th class="col-v2">Monthly Rent</th>
+                <th>Charge Date</th>
+                <th>Posting Date</th>
+                <th>Gl Account Number</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="note">
+          Amount is fixed per property:
+          <ul>
+            <li>
+              Cook County Properties: Min Rent for Late Fee 1000, Rate 5%, Base
+              10
+            </li>
+            <li>
+              Chicago Properties: Min Rent for Late Fee 500, Rate 5%, Base 10
+            </li>
+          </ul>
+          If 0–30 = 0 → Amount = 0.
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // const API_BASE = "";
+      const API_BASE = "";
+      let tableRows = []; // current rows from server
+      let allRows = [];
+      const dataTable = document.getElementById("dataTable");
+      const tbody = dataTable.querySelector("tbody");
+      const loadBtn = document.getElementById("loadBtn");
+      const exportCsvBtn = document.getElementById("exportCsvBtn");
+      const bulkBtn = document.getElementById("bulkBtn");
+      const selectAll = document.getElementById("selectAll");
+      const propFilter = document.getElementById("propFilter");
+      const monthSel = document.getElementById("monthFilter");
+      const yearSel = document.getElementById("yearFilter");
+      const descDate = document.getElementById("descDate");
+      const applyDescBtn = document.getElementById("applyDescBtn");
+      const DATE_FIELD = "Charge Date";
+      const zero30Min = document.getElementById("zero30Min");
+      const MONTHS = [
+        { v: 0, label: "All months" },
+        { v: 1, label: "Jan" },
+        { v: 2, label: "Feb" },
+        { v: 3, label: "Mar" },
+        { v: 4, label: "Apr" },
+        { v: 5, label: "May" },
+        { v: 6, label: "Jun" },
+        { v: 7, label: "Jul" },
+        { v: 8, label: "Aug" },
+        { v: 9, label: "Sep" },
+        { v: 10, label: "Oct" },
+        { v: 11, label: "Nov" },
+        { v: 12, label: "Dec" },
+      ];
+      function populateMonthFilter() {
+        monthSel.innerHTML = "";
+        for (const m of MONTHS) {
+          const opt = document.createElement("option");
+          opt.value = String(m.v);
+          opt.textContent = m.label;
+          monthSel.appendChild(opt);
+        }
+        const now = new Date();
+        monthSel.value = String(now.getMonth() + 1); // default: current month
+      }
+
+      function getZero30Min() {
+        const v = parseFloat(zero30Min.value);
+        return Number.isFinite(v) ? v : null; // null => no filter
+      }
+
+      function getMDY(dateStr) {
+        if (!dateStr) return null;
+        const s = String(dateStr).trim();
+
+        // MM/DD/YYYY
+        let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (m)
+          return {
+            m: parseInt(m[1], 10),
+            d: parseInt(m[2], 10),
+            y: parseInt(m[3], 10),
+          };
+
+        // YYYY-MM-DD (optionally with time, e.g., 2024-09-30 or 2024-09-30T00:00:00Z)
+        m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (m)
+          return {
+            m: parseInt(m[2], 10),
+            d: parseInt(m[3], 10),
+            y: parseInt(m[1], 10),
+          };
+
+        // Last-resort: Date()
+        const d = new Date(s);
+        if (!isNaN(d))
+          return {
+            m: d.getUTCMonth() + 1,
+            d: d.getUTCDate(),
+            y: d.getUTCFullYear(),
+          };
+
+        return null;
+      }
+      function pad2(n) {
+        return String(n).padStart(2, "0");
+      }
+
+      function todayISO() {
+        const now = new Date();
+        return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(
+          now.getDate()
+        )}`;
+      }
+
+      function firstDayISO(year, month) {
+        // month: 1..12
+        const y = parseInt(year, 10);
+        const m = parseInt(month, 10);
+        if (!y || !m) return "";
+        return `${y}-${pad2(m)}-01`;
+      }
+
+      function isoToMMDDYYYY(iso) {
+        if (!iso) return "";
+        // accept YYYY-MM-DD or any ISO-like form
+        const m = String(iso)
+          .trim()
+          .match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!m) return "";
+        return `${m[2]}/${m[3]}/${m[1]}`;
+      }
+
+      /**
+       * Sets the descDate input default:
+       * - default -> today
+       */
+      function syncDescInputDefault() {
+        descDate.value = todayISO();
+      }
+
+      function collectYears(rows, field) {
+        const ys = new Set();
+        for (const r of rows) {
+          const d = getMDY(r[field]);
+          if (d && d.y) ys.add(d.y);
+        }
+        return Array.from(ys).sort((a, b) => a - b);
+      }
+
+      function populateYearFilter() {
+        const years = collectYears(allRows, DATE_FIELD);
+        const nowYear = new Date().getFullYear();
+        if (!years.includes(nowYear)) years.push(nowYear);
+        years.sort((a, b) => a - b);
+        yearSel.innerHTML = "";
+        const allOpt = document.createElement("option");
+        allOpt.value = "0";
+        allOpt.textContent = "All years";
+        yearSel.appendChild(allOpt);
+        years.forEach((y) => {
+          const opt = document.createElement("option");
+          opt.value = String(y);
+          opt.textContent = String(y);
+          yearSel.appendChild(opt);
+        });
+        yearSel.value = String(nowYear); // default: current year
+      }
+
+      function dateMatchesFilter(dateStr) {
+        const target = getMDY(dateStr);
+        const selMonth = parseInt(monthSel.value, 10) || 0; // 0 = All
+        const selYear = parseInt(yearSel.value, 10) || 0; // 0 = All
+        if (!selMonth && !selYear) return true; // no filter
+        if (!target) return false;
+        if (selMonth && target.m !== selMonth) return false;
+        if (selYear && target.y !== selYear) return false;
+        return true;
+      }
+
+      function populatePropertyFilter(rows) {
+        const set = new Set(
+          rows.map((r) => (r["Property Name"] || "").trim()).filter(Boolean)
+        );
+        while (propFilter.options.length > 1) propFilter.remove(1);
+        Array.from(set)
+          .sort((a, b) => a.localeCompare(b))
+          .forEach((name) => {
+            const opt = document.createElement("option");
+            opt.value = name;
+            opt.textContent = name;
+            propFilter.appendChild(opt);
+          });
+      }
+
+      function getFilteredRows() {
+        const selProp = (propFilter.value || "").trim();
+        const zmin = getZero30Min();
+
+        return allRows.filter((r) => {
+          const propOk = selProp
+            ? String(r["Property Name"] || "").trim() === selProp
+            : true;
+
+          const dateOk = dateMatchesFilter(r[DATE_FIELD]); // Charge Date
+
+          const zVal = Number(r["_zeroTo30"] ?? 0);
+          const zeroOk = zmin == null ? true : zVal >= zmin; // exclude rows < zmin
+
+          return propOk && dateOk && zeroOk;
+        });
+      }
+
+      propFilter.addEventListener("change", () => {
+        tableRows = applySort(getFilteredRows());
+        syncDescInputDefault();
+        renderRows(tableRows);
+      });
+
+      zero30Min.addEventListener("input", () => {
+        tableRows = applySort(getFilteredRows());
+        // optional: syncDescInputDefault();  // only if you want desc date to follow visible set
+        renderRows(tableRows);
+      });
+
+      monthSel.addEventListener("change", () => {
+        tableRows = applySort(getFilteredRows());
+        syncDescInputDefault();
+        renderRows(tableRows);
+      });
+
+      yearSel.addEventListener("change", () => {
+        tableRows = applySort(getFilteredRows());
+        syncDescInputDefault();
+        renderRows(tableRows);
+      });
+
+      // No-op: server computes Amount; keep calls harmless
+      function recalcAmounts() {}
+
+      // Map table header index -> row key
+      const HEADER_KEYS = [
+        "", // checkbox
+        "Property Name",
+        "Unit Name",
+        "Occupancy UID",
+        "Tenant Name",
+        "Occupancy ID",
+        "Amount",
+        "_zeroTo30", // NEW (view-only)
+        "_totalAmount", // NEW (view-only)
+        "Charge Date",
+        "Posting Date",
+        "Gl Account Number",
+        "Description",
+      ];
+
+      const sortState = { key: null, dir: 1 };
+
+      const toggleV2Btn = document.getElementById("toggleV2Btn");
+      let showV2 = false;
+
+      toggleV2Btn.addEventListener("click", () => {
+        showV2 = !showV2;
+        dataTable.classList.toggle("show-v2", showV2);
+        toggleV2Btn.textContent = showV2
+          ? "Hide AR Columns (0–30 & Rent)"
+          : "Show AR Columns (0–30 & Rent)";
+      });
+
+      // ---------- LOAD ----------
+      loadBtn.addEventListener("click", async () => {
+        loadBtn.disabled = true;
+        loadBtn.textContent = "Loading…";
+        try {
+          //const daysEl = document.getElementById("v0days");
+          //const v0days = Math.max(1,Math.min(3650, parseInt(daysEl.value, 10) || 30));
+          //const r = await fetch(`${API_BASE}/api/table-data?v0days=${encodeURIComponent(v0days)}`);
+          const r = await fetch(`${API_BASE}/api/table-data`);
+          const j = await r.json();
+          if (!r.ok) throw new Error(j?.detail || j?.error || r.status);
+
+          const warnings = Array.isArray(j?.warnings) ? j.warnings : [];
+          if (warnings.length) {
+            alert(
+              "Loaded with warnings (no rows may be returned):\n\n" +
+                warnings.slice(0, 10).join("\n")
+            );
+          }
+
+          allRows = (Array.isArray(j.rows) ? j.rows : []).map((row, i) => ({
+            ...row,
+            _i: i,
+            _selected: false,
+          }));
+
+          if (!allRows.length && !warnings.length) {
+            alert(
+              "No rows returned. This usually means the V2 aged receivables report returned 0 rows (or is being filtered out).\n\nTip: open /api/debug/aged to see what the server is receiving."
+            );
+          }
+
+          populatePropertyFilter(allRows);
+          populateYearFilter();
+          tableRows = applySort(getFilteredRows());
+          syncDescInputDefault();
+          renderRows(tableRows);
+          attachHeaderSortersOnce();
+        } catch (e) {
+          console.error(e);
+          alert("Load failed: " + (e.message || e));
+        } finally {
+          loadBtn.disabled = false;
+          loadBtn.textContent = "Load Data";
+        }
+      });
+
+      // ---------- RENDER ----------
+      function getSelectedRows() {
+        return (tableRows || []).filter((r) => r._selected);
+      }
+
+      function renderRows(rows) {
+        tbody.innerHTML = "";
+        rows.forEach((row) => {
+          const tr = document.createElement("tr");
+
+          // selection checkbox (persists via row._selected)
+          const selTd = document.createElement("td");
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.className = "rowSel";
+          cb.checked = !!row._selected;
+          cb.addEventListener("change", () => {
+            row._selected = cb.checked;
+            updateSelectAll();
+          });
+          selTd.appendChild(cb);
+          tr.appendChild(selTd);
+
+          addCell(tr, row["Property Name"]);
+          addCell(tr, row["Unit Name"]);
+          addCell(tr, row["Occupancy UID"]);
+          addCell(tr, row["Tenant Name"]);
+          addCell(tr, row["Occupancy ID"]);
+          addCell(tr, Number(row["Amount"]).toFixed(2));
+          addCell(tr, Number(row["_zeroTo30"] ?? 0).toFixed(2), "col-v2");
+          addCell(tr, Number(row["_totalAmount"] ?? 0).toFixed(2), "col-v2");
+          addCell(tr, row["Charge Date"] || "");
+          addCell(tr, row["Posting Date"] || "");
+          addCell(tr, row["Gl Account Number"]);
+          addCell(tr, row["Description"]);
+          tbody.appendChild(tr);
+        });
+
+        updateSelectAll();
+        updateHeaderIndicators(sortState.key);
+      }
+
+      function addCell(tr, text, cls) {
+        const td = document.createElement("td");
+        if (cls) td.className = cls;
+        td.textContent = text ?? "";
+        tr.appendChild(td);
+      }
+
+      // ---------- SELECT-ALL ----------
+      selectAll.addEventListener("change", () => {
+        tableRows.forEach((r) => (r._selected = selectAll.checked));
+        renderRows(tableRows);
+      });
+
+      function updateSelectAll() {
+        const total = tableRows.length;
+        const selected = tableRows.filter((r) => r._selected).length;
+        selectAll.checked = total > 0 && selected === total;
+        selectAll.indeterminate = selected > 0 && selected < total;
+      }
+
+      // ---------- EXPORT ----------
+      document
+        .getElementById("exportCsvBtn")
+        .addEventListener("click", async () => {
+          if (exportCsvBtn.disabled) return;
+          exportCsvBtn.disabled = true;
+          exportCsvBtn.textContent = "Exporting…";
+
+          try {
+            const selected = getSelectedRows();
+            const base = selected.length ? selected : getFilteredRows();
+            if (!base.length) {
+              alert(
+                "No rows to export. Click Load Data first or clear filters."
+              );
+              return;
+            }
+
+            const rowsToExport = base.map((r) => ({
+              "Property Name": r["Property Name"] || "",
+              "Unit Name": r["Unit Name"] || "",
+              "Occupancy UID": r["Occupancy UID"] || "",
+              "Tenant Name": r["Tenant Name"] || "",
+              "Occupancy ID": r["Occupancy ID"] || "",
+              Amount: Number(r["Amount"] ?? 0).toFixed(2),
+              "Charge Date": r["Charge Date"] || "",
+              "Posting Date": r["Posting Date"] || "",
+              "Gl Account Number": r["Gl Account Number"] || "",
+              Description: r["Description"] || "",
+            }));
+
+            // 1) Desktop: native Save dialog (lets user pick directory+filename)
+            if (window.pywebview?.api?.save_csv_to_dir) {
+              const res = await window.pywebview.api.save_csv_to_dir(
+                rowsToExport
+              );
+              if (res?.ok) {
+                alert("CSV saved to:\n" + res.path);
+                return;
+              }
+              if (res?.error && res.error !== "User cancelled") {
+                console.warn(
+                  "save_csv_to_dir error:",
+                  res.error,
+                  "falling back to HTTP"
+                );
+              } else {
+                return; // user canceled
+              }
+            }
+
+            // 2) HTTP fallback (browser download)
+            const resp = await fetch(`${API_BASE}/api/export-csv`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ rows: rowsToExport }),
+            });
+            if (!resp.ok) throw new Error(await resp.text());
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `bulk-charges-${new Date()
+              .toISOString()
+              .slice(0, 10)}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 10000);
+          } catch (err) {
+            console.error(err);
+            alert(err.message || "CSV export failed");
+          } finally {
+            exportCsvBtn.disabled = false;
+            exportCsvBtn.textContent = "Export CSV";
+          }
+        });
+
+      // ---------- BULK SEND ----------
+      bulkBtn.addEventListener("click", async () => {
+        const selected = (tableRows || []).filter((r) => r._selected);
+        if (!selected.length) return alert("Select at least one row.");
+
+        const today = new Date().toISOString().slice(0, 10);
+        const rows = selected.map((r) => {
+          const copy =
+            typeof structuredClone === "function"
+              ? structuredClone(r)
+              : JSON.parse(JSON.stringify(r));
+          if (!copy["Charge Date"]) copy["Charge Date"] = today;
+          if (!copy["Posting Date"]) copy["Posting Date"] = today;
+          return copy;
+        });
+
+        for (const r of rows) {
+          if (!r._v0OccupancyId) {
+            return alert(
+              "Missing v0 OccupancyId on one or more selected rows."
+            );
+          }
+        }
+
+        bulkBtn.disabled = true;
+        bulkBtn.textContent = "Sending…";
+        try {
+          const resp = await fetch(`${API_BASE}/api/bulk-charges`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rows }),
+          });
+
+          let body;
+          const text = await resp.text();
+          try {
+            body = JSON.parse(text);
+          } catch {
+            body = { detail: text };
+          }
+
+          if (!resp.ok)
+            throw new Error(body?.detail || body?.error || resp.statusText);
+          alert("Bulk create charges: Success. See console for response.");
+          console.log("Bulk create response:", body);
+        } catch (e) {
+          console.error(e);
+          alert("Bulk create failed: " + (e.message || e));
+        } finally {
+          bulkBtn.disabled = false;
+          bulkBtn.textContent = "Create Bulk Charges (Selected)";
+        }
+      });
+
+      // ---------- SORTING ----------
+      function attachHeaderSortersOnce() {
+        const ths = dataTable.querySelectorAll("thead th");
+        ths.forEach((th, idx) => {
+          if (idx === 0) return; // skip select-all
+          th.classList.add("sortable");
+          th.addEventListener(
+            "click",
+            () => {
+              const key = HEADER_KEYS[idx];
+              sortBy(key);
+            },
+            { passive: true }
+          );
+        });
+      }
+
+      function sortBy(key) {
+        if (!key) return;
+        if (sortState.key === key) {
+          sortState.dir *= -1;
+        } else {
+          sortState.key = key;
+          sortState.dir = 1;
+        }
+
+        tableRows = applySort(tableRows);
+
+        renderRows(tableRows);
+      }
+
+      function applySort(rows) {
+        if (!sortState.key) return rows;
+        const key = sortState.key;
+        const type = getTypeForKey(key);
+        const dir = sortState.dir;
+        return [...rows].sort((a, b) => {
+          const res = compare(a[key], b[key], type);
+          if (res !== 0) return res * dir;
+          return (a._i ?? 0) - (b._i ?? 0);
+        });
+      }
+
+      function getTypeForKey(key) {
+        if (key === "Amount" || key === "_zeroTo30" || key === "_totalAmount")
+          return "number";
+        if (key === "Charge Date" || key === "Posting Date") return "date";
+        return "string";
+      }
+
+      function compare(a, b, type) {
+        if (type === "number") {
+          const na = Number(a) || 0;
+          const nb = Number(b) || 0;
+          return na - nb;
+        }
+        if (type === "date") {
+          const da = a ? Date.parse(a) : NaN;
+          const db = b ? Date.parse(b) : NaN;
+          if (Number.isNaN(da) && Number.isNaN(db)) return 0;
+          if (Number.isNaN(da)) return -1;
+          if (Number.isNaN(db)) return 1;
+          return da - db;
+        }
+        const sa = String(a ?? "").toLowerCase();
+        const sb = String(b ?? "").toLowerCase();
+        if (sa < sb) return -1;
+        if (sa > sb) return 1;
+        return 0;
+      }
+
+      function updateHeaderIndicators(activeKey) {
+        const ths = dataTable.querySelectorAll("thead th");
+        ths.forEach((th, idx) => {
+          if (idx === 0) return;
+          th.querySelector(".sort-ind")?.remove();
+          const key = HEADER_KEYS[idx];
+          const span = document.createElement("span");
+          span.className = "sort-ind";
+          span.textContent =
+            key === activeKey ? (sortState.dir === 1 ? "▲" : "▼") : "";
+          th.appendChild(span);
+        });
+      }
+      applyDescBtn.addEventListener("click", () => {
+        const iso = descDate.value;
+        if (!iso) {
+          alert("Pick a description date first.");
+          return;
+        }
+        const formatted = isoToMMDDYYYY(iso);
+        if (!formatted) {
+          alert("Invalid date.");
+          return;
+        }
+        const newDesc = `IL Custom Late Fee - ${formatted}`;
+
+        // Apply to current filtered rows (so your filters control scope)
+        const target = getFilteredRows();
+        target.forEach((r) => {
+          r["Description"] = newDesc;
+        });
+
+        // Re-render current view
+        tableRows = getFilteredRows();
+        renderRows(tableRows);
+      });
+      document.addEventListener("DOMContentLoaded", () => {
+        populateMonthFilter();
+        syncDescInputDefault();
+        // optional pywebview bridge check
+        window.addEventListener("pywebviewready", async () => {
+          try {
+            await window.pywebview?.api?.ping?.();
+          } catch (e) {}
+        });
+      });
+    </script>
+  </body>
+</html>
+
