@@ -2,6 +2,7 @@
 import os
 import json
 import base64
+import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import urljoin, urlparse, parse_qs, urlencode
@@ -18,7 +19,7 @@ from requests.adapters import HTTPAdapter
 from fastapi import FastAPI, HTTPException, APIRouter, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values
 
 _EXPORT_TICKETS: dict[str, tuple[float, bytes]] = {}
 _EXPORT_LOCK = Lock()
@@ -29,13 +30,38 @@ _CACHE_LOCK = Lock()
 HERE = os.path.abspath(os.path.dirname(__file__))
 UI_DIR = os.path.join(HERE, "ui")
 
-# Load environment
+# Load environment.
+# Baseline precedence: real OS env > .env > .env.local (no overrides).
+#
+# Repo-specific override requested:
+# - V0 credentials should come from `.env.local`
+# - V2 credentials should be the "test" values (typically stored in `.env`)
 load_dotenv(os.path.join(HERE, ".env"), override=False)
+load_dotenv(os.path.join(HERE, ".env.local"), override=False)
 load_dotenv(override=False)
+
+# Force specific keys from `.env.local` for V0 calls (even if `.env` contains them).
+_local_env = dotenv_values(os.path.join(HERE, ".env.local"))
+for _k in ("V0_BASE", "V0_CLIENT_ID", "V0_CLIENT_SECRET"):
+    _v = str(_local_env.get(_k) or "").strip()
+    if _v:
+        os.environ[_k] = _v
+
+# Ensure V2 auth is set to the requested/test account values (only if not already set).
+if not str(os.getenv("V2_USER") or "").strip():
+    os.environ["V2_USER"] = "3bfc4d6f199d4e7c93904ee6509df0bb"
+if not str(os.getenv("V2_PASS") or "").strip():
+    os.environ["V2_PASS"] = "7b59d6550766e97890608c54e0f40eb2"
 
 LATE_FEE_THRESHOLD = float(os.getenv("LATE_FEE_THRESHOLD", "500"))
 LATE_FEE_PERCENT   = float(os.getenv("LATE_FEE_PERCENT",   "0.05"))  # 5% as 0.05
 LATE_FEE_BASE_FEE  = float(os.getenv("LATE_FEE_BASE_FEE",  "10"))
+
+# For AppFolio V0 tenants, their API requires either filters[Id] or filters[LastUpdatedAtFrom].
+# Using a very old LastUpdatedAtFrom is an easy way to pull "all" current/notice tenants.
+V0_TENANTS_LAST_UPDATED_AT_FROM = (
+    os.getenv("V0_TENANTS_LAST_UPDATED_AT_FROM", "") or "1999-03-14T17:43:49.833Z"
+).strip()
 
 PROPERTY_GROUP_A = {
     "8006","8007","8008","8009","8010",
@@ -556,12 +582,12 @@ def fetchV0All(path: str, page_size: int = 1000, base_query: Dict[str,str] | Non
     return all_data
 
 def fetchV0TenantsAll(days: Optional[int] = DEFAULT_V0_DAYS) -> List[dict]:
-    # Always include LastUpdatedAtFrom; if days is None, use a wide window (10y)
-    lookback = clampInt(days, 1, 3650) if days is not None else 3650
+    # Always include LastUpdatedAtFrom; if days is None, use a very old date.
+    lookback = clampInt(days, 1, 3650) if days is not None else None
     base_query = {
-        "filters[Status]": "Current,Notice,Evict",
+        "filters[Status]": "Current,Notice",
         "filters[IncludeUnassigned]": "false",
-        "filters[LastUpdatedAtFrom]": isoDaysAgo(lookback or 3650),
+        "filters[LastUpdatedAtFrom]": isoDaysAgo(lookback) if lookback is not None else V0_TENANTS_LAST_UPDATED_AT_FROM,
     }
     return fetchV0All("tenants", page_size=1000, base_query=base_query)
 
@@ -699,14 +725,31 @@ def fetchV0Tenants_31days_specific_props(days: int = DEFAULT_V0_DAYS) -> List[di
         "b471e129-7a33-11f0-af0a-02e94e52d34b","b49860ee-7a33-11f0-af0a-02e94e52d34b","b4d1d6b0-7a33-11f0-af0a-02e94e52d34b","b4fe4cee-7a33-11f0-af0a-02e94e52d34b",
         "b52b4753-7a33-11f0-af0a-02e94e52d34b"
     ]
+    # Dedupe while keeping order (important for stable caching/debugging).
+    prop_ids = list(dict.fromkeys([p for p in prop_ids if str(p or "").strip()]))
     lookback = clampInt(days, 1, 3650) or DEFAULT_V0_DAYS
-    q = {
+    base_q = {
         "filters[LastUpdatedAtFrom]": isoDaysAgo(lookback),
-        "filters[PropertyId]": ",".join(prop_ids),
         "filters[Status]": "Current,Notice",
         "filters[IncludeUnassigned]": "false",
     }
-    return fetchV0All("tenants", page_size=1000, base_query=q)
+
+    # Avoid "414 Request-URI Too Large" when the property list is long by chunking.
+    # (V0 tenants endpoint uses GET with query params.)
+    if not prop_ids:
+        return fetchV0All("tenants", page_size=1000, base_query=base_q)
+
+    s = _make_session()
+    seen: Dict[str, dict] = {}
+    for chunk in _chunked(prop_ids, 50):
+        q = dict(base_q)
+        q["filters[PropertyId]"] = ",".join(chunk)
+        rows = fetchV0All("tenants", page_size=1000, base_query=q, session=s)
+        for t in rows:
+            tid = str(t.get("Id", "")).strip()
+            if tid:
+                seen[tid] = t
+    return list(seen.values())
 
 def _chunked(values: List[str], size: int) -> List[List[str]]:
     return [values[i:i + size] for i in range(0, len(values), size)]
@@ -721,16 +764,58 @@ def _clean_ids(values: List[Any]) -> List[str]:
             out.append(s)
     return out
 
+_UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+def _is_uuid(value: str) -> bool:
+    return bool(_UUID_RE.fullmatch(str(value or "").strip()))
+
+def _v0_get(t: Any, *keys: str) -> str:
+    """
+    Best-effort getter for V0 tenant objects.
+    Supports both "flat" shapes (e.g., {"OccupancyId": "..."}) and JSON:API-ish
+    shapes (e.g., {"id": "...", "attributes": {"occupancy_id": "..."}}).
+    """
+    if not isinstance(t, dict):
+        return ""
+    attrs = t.get("attributes") if isinstance(t.get("attributes"), dict) else {}
+
+    def _candidates(k: str) -> List[str]:
+        # Try exact, lower, snake-ish.
+        out = [k]
+        out.append(k.lower())
+        # CamelCase -> snake_case-ish
+        snake = []
+        for ch in k:
+            if ch.isupper():
+                snake.append("_")
+                snake.append(ch.lower())
+            else:
+                snake.append(ch)
+        out.append("".join(snake).lstrip("_"))
+        return list(dict.fromkeys(out))
+
+    for k in keys:
+        for kk in _candidates(k):
+            v = t.get(kk)
+            if v is None:
+                v = attrs.get(kk)
+            if v is not None:
+                s = str(v).strip()
+                if s:
+                    return s
+    return ""
+
 def _build_v0_maps(v0tenants: List[dict]) -> tuple[Dict[str, str], Dict[str, str], Dict[str, str]]:
     tenantId_to_v0OccId: Dict[str, str] = {}
     integrationId_to_v0OccId: Dict[str, str] = {}
     unitId_to_v0OccId: Dict[str, str] = {}
     for t in v0tenants:
-        tid = str(t.get("Id", "")).strip()
-        integ_id = str(t.get("IntegrationId", "") or t.get("ExternalId", "")).strip()
-        occ = str(t.get("OccupancyId", "")).strip()
-        status = str(t.get("Status", "")).lower()
-        unitId = str(t.get("UnitId", "")).strip()
+        # NOTE: "OccupancyId" here is the v0 occupancy UUID used by /charges/bulk.
+        tid = _v0_get(t, "Id", "id")
+        integ_id = _v0_get(t, "IntegrationId", "ExternalId", "tenant_integration_id")
+        occ = _v0_get(t, "OccupancyId", "occupancy_id")
+        status = _v0_get(t, "Status", "status").lower()
+        unitId = _v0_get(t, "UnitId", "unit_id")
         if tid and occ:
             tenantId_to_v0OccId[tid] = occ
         if integ_id and occ:
@@ -744,37 +829,44 @@ def _apply_v0_maps(rows: List[Dict[str, Any]], tenantId_to_v0OccId: Dict[str, st
         if rr.get("_v0OccupancyId"):
             continue
         integ = rr.get("_tenantIntegrationId", "").strip()
-        rr["_v0OccupancyId"] = (
-            tenantId_to_v0OccId.get(integ, "") or
-            integrationId_to_v0OccId.get(integ, "") or
-            unitId_to_v0OccId.get(str(rr.get("_v2UnitId", "")), "")
-        )
+        rr["_v0OccupancyId"] = tenantId_to_v0OccId.get(integ, "")
 
 def fetchV0TenantsByIds(integration_ids: List[str], unit_ids: List[str]) -> List[dict]:
     integration_ids = _clean_ids(integration_ids)
     unit_ids = _clean_ids(unit_ids)
+    # V0 expects UUIDs for UnitId filters; V2 report `unit_id` values may be non-UUID.
+    unit_ids = [u for u in unit_ids if _is_uuid(u)]
     if not integration_ids and not unit_ids:
         return []
     s = _make_session()
     seen: Dict[str, dict] = {}
     base = {
-        "filters[Status]": "Current,Notice,Evict",
+        "filters[Status]": "Current,Notice",
         "filters[IncludeUnassigned]": "false",
+        # AppFolio V0 tenants requires either filters[Id] or filters[LastUpdatedAtFrom].
+        # We always include LastUpdatedAtFrom so lookups by UnitId/IntegrationId don't 400.
+        "filters[LastUpdatedAtFrom]": isoDaysAgo(3650),
     }
     for chunk in _chunked(integration_ids, 100):
+        # In this app, we map:
+        # V2 tenant_directory.tenant_integration_id -> V0 tenants.Id -> V0 tenants.OccupancyId
         q = dict(base)
-        q["filters[IntegrationId]"] = ",".join(chunk)
+        q["filters[Id]"] = ",".join(chunk)
         rows = fetchV0All("tenants", page_size=1000, base_query=q, session=s)
         for t in rows:
-            tid = str(t.get("Id", "")).strip()
+            tid = _v0_get(t, "Id", "id")
             if tid:
                 seen[tid] = t
     for chunk in _chunked(unit_ids, 100):
         q = dict(base)
         q["filters[UnitId]"] = ",".join(chunk)
-        rows = fetchV0All("tenants", page_size=1000, base_query=q, session=s)
+        try:
+            rows = fetchV0All("tenants", page_size=1000, base_query=q, session=s)
+        except Exception:
+            # Keep any matches from the IntegrationId/Id lookup above; UnitId lookup is opportunistic.
+            continue
         for t in rows:
-            tid = str(t.get("Id", "")).strip()
+            tid = _v0_get(t, "Id", "id")
             if tid:
                 seen[tid] = t
     return list(seen.values())
@@ -792,7 +884,9 @@ def fetchTenantDirectory_cached(refresh: bool = False) -> List[dict]:
 def fetchV0Tenants_cached(days: int, refresh: bool = False) -> List[dict]:
     prop_key = V0_PROPERTY_IDS.strip() or "fallback"
     key = f"v0tenants|{prop_key}|{days}"
-    return _cached_fetch(key, refresh, lambda: fetchV0Tenants_31days_specific_props(days))
+    # Default to the "wide" tenant pull (see curl in README/notes) so we can map
+    # V2 tenant_integration_id -> V0 tenant Id reliably.
+    return _cached_fetch(key, refresh, lambda: fetchV0TenantsAll(None))
 
 # ---------- FastAPI app (endpoints mirroring server.js) ----------
 app = FastAPI(title="Bulk Charge Local API (Node Parity)")
@@ -929,6 +1023,8 @@ def table_data(v0days: int = DEFAULT_V0_DAYS, refresh: int = 0, resolve_missing:
 
         for r in tdir:
             occ_uid = str(r.get("occupancy_import_uid","")).strip()
+            # Despite the name, V2's `tenant_integration_id` is the identifier we
+            # join against V0 tenants' "Id" to obtain the V0 "OccupancyId".
             integ   = str(r.get("tenant_integration_id","")).strip()
             status  = str(r.get("status","")).strip().lower()
             if occ_uid and integ:
@@ -964,11 +1060,9 @@ def table_data(v0days: int = DEFAULT_V0_DAYS, refresh: int = 0, resolve_missing:
             cands = occUid_to_candidates.get(occ_uid, [])
             integ = pickIntegrationId(cands)
 
-            v0OccId = (
-                tenantId_to_v0OccId.get(integ, "") or
-                integrationId_to_v0OccId.get(integ, "") or
-                (unitId_to_v0OccId.get(str(r.get("v2UnitId","")), "") if r.get("v2UnitId") else "")
-            )
+            # Primary/only mapping used for bulk charges:
+            # V2 tenant_directory.tenant_integration_id -> V0 tenants.Id -> V0 tenants.OccupancyId
+            v0OccId = tenantId_to_v0OccId.get(str(integ or "").strip(), "")
 
             z_clean = parseCurrencyOrNumber(r.get("zeroTo30", 0))
             t_total = parseCurrencyOrNumber(r.get("totalAmount", 0))
@@ -1012,7 +1106,14 @@ def table_data(v0days: int = DEFAULT_V0_DAYS, refresh: int = 0, resolve_missing:
             t0_lookup = time.perf_counter()
             try:
                 integration_ids = [rr.get("_tenantIntegrationId", "") for rr in rows if not rr.get("_v0OccupancyId")]
-                unit_ids = [rr.get("_v2UnitId", "") for rr in rows if not rr.get("_v0OccupancyId")]
+                raw_unit_ids = [rr.get("_v2UnitId", "") for rr in rows if not rr.get("_v0OccupancyId")]
+                unit_ids = [u for u in _clean_ids(raw_unit_ids) if _is_uuid(u)]
+                dropped = len(_clean_ids(raw_unit_ids)) - len(unit_ids)
+                if dropped:
+                    warnings.append(
+                        f"Skipping {dropped} non-UUID unit_id value(s) for V0 tenants UnitId lookup "
+                        f"(V0 requires UUIDs for filters[UnitId])."
+                    )
                 v0_lookup = fetchV0TenantsByIds(integration_ids, unit_ids)
                 if v0_lookup:
                     tId, iId, uId = _build_v0_maps(v0_lookup)
@@ -1021,6 +1122,20 @@ def table_data(v0days: int = DEFAULT_V0_DAYS, refresh: int = 0, resolve_missing:
                 print("v0 targeted lookup failed:", repr(ex))
                 warnings.append(f"v0 targeted lookup failed: {type(ex).__name__}: {ex}")
             timings["v0_lookup"] = time.perf_counter() - t0_lookup
+
+        # If we still have missing v0 occupancy ids, do a wider (but still property-scoped)
+        # tenant pull. This is much cheaper than "all tenants" and avoids blocking bulk create.
+        if any(not rr.get("_v0OccupancyId") for rr in rows):
+            t0_prop_wide = time.perf_counter()
+            try:
+                v0_prop_wide = fetchV0Tenants_31days_specific_props(3650)
+                if v0_prop_wide:
+                    tId, iId, uId = _build_v0_maps(v0_prop_wide)
+                    _apply_v0_maps(rows, tId, iId, uId)
+            except Exception as ex:
+                print("v0 property-scoped wide fetch failed:", repr(ex))
+                warnings.append(f"v0 property-scoped wide fetch failed: {type(ex).__name__}: {ex}")
+            timings["v0_prop_wide"] = time.perf_counter() - t0_prop_wide
 
         if resolve_missing_flag and any(not rr.get("_v0OccupancyId") for rr in rows):
             t0_fallback = time.perf_counter()
