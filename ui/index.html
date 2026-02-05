@@ -66,6 +66,76 @@
         opacity: 0.35;
         mix-blend-mode: soft-light;
       }
+      .auth-screen {
+        min-height: 100vh;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+      .auth-panel {
+        width: min(460px, 100%);
+        background: linear-gradient(165deg, #f8f7f1 0%, #edf2f7 100%);
+        color: #101318;
+        border-radius: 18px;
+        border: 1px solid rgba(16, 19, 24, 0.15);
+        box-shadow: 0 20px 42px rgba(7, 10, 16, 0.42);
+        overflow: hidden;
+      }
+      .auth-top {
+        padding: 18px 20px;
+        background: linear-gradient(
+          120deg,
+          rgba(255, 177, 0, 0.88),
+          rgba(255, 198, 77, 0.9)
+        );
+        color: #1a1200;
+        border-bottom: 1px solid rgba(16, 19, 24, 0.12);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-weight: 700;
+      }
+      .auth-body {
+        padding: 22px 20px 20px;
+      }
+      .auth-title {
+        margin: 0 0 8px;
+        font-family: var(--font-display);
+        font-size: 32px;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+      }
+      .auth-subtitle {
+        margin: 0 0 18px;
+        color: #394353;
+        font-size: 14px;
+      }
+      .pin-form {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+      }
+      .pin-input {
+        font-family: var(--font-mono);
+        letter-spacing: 0.35em;
+        font-size: 18px;
+        text-align: center;
+        padding-left: calc(10px + 0.35em);
+      }
+      .pin-hint {
+        margin: 12px 0 0;
+        min-height: 20px;
+        color: #b42318;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      body.locked .wrap {
+        display: none;
+      }
+      body.locked .auth-screen {
+        display: flex;
+      }
 
       .wrap {
         width: 100%;
@@ -373,7 +443,33 @@
       }
     </style>
   </head>
-  <body>
+  <body class="locked">
+    <section id="pinGate" class="auth-screen" aria-label="PIN access gate">
+      <div class="auth-panel">
+        <div class="auth-top">Secure Access</div>
+        <div class="auth-body">
+          <h2 class="auth-title">Enter PIN</h2>
+          <p class="auth-subtitle">
+            Enter your 4-digit PIN to continue to Bulk Charges Builder.
+          </p>
+          <form id="pinForm" class="pin-form" autocomplete="off">
+            <input
+              id="pinInput"
+              class="control pin-input"
+              type="password"
+              inputmode="numeric"
+              maxlength="4"
+              pattern="\d{4}"
+              placeholder="0000"
+              aria-label="4 digit PIN"
+              required
+            />
+            <button type="submit" class="btn btn-primary">Unlock</button>
+          </form>
+          <p id="pinError" class="pin-hint" role="alert"></p>
+        </div>
+      </div>
+    </section>
     <div class="wrap">
       <div class="header">
         <div class="title-block">
@@ -504,8 +600,13 @@
     <script>
       // const API_BASE = "";
       const API_BASE = "";
+      const APP_PIN = "1534";
+      const PIN_SESSION_KEY = "bulkcharge_pin_unlocked";
       let tableRows = []; // current rows from server
       let allRows = [];
+      const pinForm = document.getElementById("pinForm");
+      const pinInput = document.getElementById("pinInput");
+      const pinError = document.getElementById("pinError");
       const dataTable = document.getElementById("dataTable");
       const tbody = dataTable.querySelector("tbody");
       const loadBtn = document.getElementById("loadBtn");
@@ -534,6 +635,36 @@
         { v: 11, label: "Nov" },
         { v: 12, label: "Dec" },
       ];
+
+      function setAppLocked(locked) {
+        document.body.classList.toggle("locked", locked);
+      }
+
+      function unlockApp() {
+        sessionStorage.setItem(PIN_SESSION_KEY, "1");
+        pinError.textContent = "";
+        pinInput.value = "";
+        setAppLocked(false);
+      }
+
+      function handlePinSubmit(event) {
+        event.preventDefault();
+        const enteredPin = (pinInput.value || "").trim();
+        if (enteredPin === APP_PIN) {
+          unlockApp();
+          return;
+        }
+        pinError.textContent = "Incorrect PIN. Please try again.";
+        pinInput.value = "";
+        pinInput.focus();
+      }
+
+      pinForm.addEventListener("submit", handlePinSubmit);
+      pinInput.addEventListener("input", () => {
+        pinInput.value = pinInput.value.replace(/[^\d]/g, "").slice(0, 4);
+        if (pinError.textContent) pinError.textContent = "";
+      });
+
       function populateMonthFilter() {
         monthSel.innerHTML = "";
         for (const m of MONTHS) {
@@ -1099,6 +1230,9 @@
         renderRows(tableRows);
       });
       document.addEventListener("DOMContentLoaded", () => {
+        const hasAccess = sessionStorage.getItem(PIN_SESSION_KEY) === "1";
+        setAppLocked(!hasAccess);
+        if (!hasAccess) pinInput.focus();
         populateMonthFilter();
         syncDescInputDefault();
         // optional pywebview bridge check
