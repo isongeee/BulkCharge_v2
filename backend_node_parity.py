@@ -730,7 +730,7 @@ def fetchV0Tenants_31days_specific_props(days: int = DEFAULT_V0_DAYS) -> List[di
     lookback = clampInt(days, 1, 3650) or DEFAULT_V0_DAYS
     base_q = {
         "filters[LastUpdatedAtFrom]": isoDaysAgo(lookback),
-        "filters[Status]": "Current,Notice",
+        "filters[Status]": "Current,Notice,Evict",
         "filters[IncludeUnassigned]": "false",
     }
 
